@@ -148,10 +148,10 @@ const STAGES=[
 // ====== DIFFICULTY ROUNDS ======
 const ROUNDS=[
   {name:'노말',badge:'🟢',color:'#2ed573',monHP:2,timerMult:1,dmg:20,hideExtra:0,desc:'기본 난이도'},
-  {name:'하드',badge:'🟡',color:'#ffd700',monHP:3,timerMult:.85,dmg:25,hideExtra:0,desc:'몬스터가 더 강해졌다!'},
-  {name:'엘리트',badge:'🟠',color:'#ff9f43',monHP:3,timerMult:.7,dmg:25,hideExtra:1,desc:'시간이 더 촉박하다!'},
-  {name:'마스터',badge:'🔴',color:'#ff4757',monHP:4,timerMult:.55,dmg:30,hideExtra:1,desc:'최강의 몬스터들!'},
-  {name:'레전드',badge:'👑',color:'#e040fb',monHP:4,timerMult:.45,dmg:35,hideExtra:2,desc:'전설의 영역에 도전!'},
+  {name:'하드',badge:'🟡',color:'#ffd700',monHP:3,timerMult:.9,dmg:25,hideExtra:0,desc:'몬스터가 더 강해졌다!'},
+  {name:'엘리트',badge:'🟠',color:'#ff9f43',monHP:3,timerMult:.8,dmg:25,hideExtra:1,desc:'시간이 더 촉박하다!'},
+  {name:'마스터',badge:'🔴',color:'#ff4757',monHP:4,timerMult:.7,dmg:30,hideExtra:1,desc:'최강의 몬스터들!'},
+  {name:'레전드',badge:'👑',color:'#e040fb',monHP:4,timerMult:.6,dmg:35,hideExtra:2,desc:'전설의 영역에 도전!'},
 ];
 
 const G={
@@ -563,7 +563,7 @@ function applyMonsterAbility(){
     if(wrongs.length>0)G.hiddenChoice=wrongs[Math.floor(Math.random()*wrongs.length)].i;
   }
   if(ab==='timer'||ab==='combo'){
-    const base=600; // 10 sec
+    const base=1800; // 30 sec at 60fps
     G.timerMax=Math.floor(base*rd.timerMult);G.timer=G.timerMax;
   }
   if(ab==='decoy'){G.decoyBlink=9999;}
