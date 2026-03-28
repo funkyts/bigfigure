@@ -467,21 +467,23 @@ function onOk(){
   const mn=G.nodes[G.nodeIdx];
   spawnP(mn.x-G.cameraX,mn.y,MONS[G.stage].color,15);
   spawnDmg(pts,mn.x-G.cameraX,mn.y-30,G.combo>=3);
-  G.qi++;
-  
-  if(G.mHP<=0){
-    // Monster defeated
-    sfxWin();G.flashColor='rgba(255,255,0,.4)';G.flashAlpha=.5;G.shakeT=12;
-    spawnP(mn.x-G.cameraX,mn.y,'#ffd700',30);
-    G.nodes[G.nodeIdx].cleared=true;
-    setTimeout(()=>{
-      G.battleActive=false;G.selectedIdx=-1;G.explainText='';G.explainShow=false;
-      G.phase='walk';G.nodeIdx++;G.waveQCount=0;
-    },900);
-  }else{
-    // More HP left - next question
-    setTimeout(nextQ,700);
-  }
+  // Show correct highlight for 500ms, then advance
+  setTimeout(()=>{
+    G.selectedIdx=-1; // reset BEFORE qi advances so next question draws clean
+    G.qi++;
+    
+    if(G.mHP<=0){
+      sfxWin();G.flashColor='rgba(255,255,0,.4)';G.flashAlpha=.5;G.shakeT=12;
+      spawnP(mn.x-G.cameraX,mn.y,'#ffd700',30);
+      G.nodes[G.nodeIdx].cleared=true;
+      setTimeout(()=>{
+        G.battleActive=false;G.explainText='';G.explainShow=false;
+        G.phase='walk';G.nodeIdx++;G.waveQCount=0;
+      },600);
+    }else{
+      G.answering=true;
+    }
+  },500);
 }
 
 function onFail(q){
@@ -493,14 +495,22 @@ function onFail(q){
   G.explainText=getExpl(q);
   G.explainShow=true;
   
-  G.qi++;
-  
-  if(G.towerHP<=0){
-    setTimeout(endStage,2000);
-  }else{
-    // Wait then next question
-    setTimeout(nextQ,2800);
-  }
+  // Show wrong/correct highlights for 1.5s, then reset and advance
+  setTimeout(()=>{
+    G.selectedIdx=-1; // reset before qi advances
+    G.qi++;
+    
+    if(G.towerHP<=0){
+      setTimeout(endStage,1000);
+    }else{
+      // Keep explain visible a bit longer, then go to next question
+      setTimeout(()=>{
+        G.explainText='';G.explainShow=false;
+        if(G.qi>=G.qs.length||G.mHP<=0){finishWave();}
+        else{G.answering=true;}
+      },1500);
+    }
+  },1200);
 }
 
 function nextQ(){
