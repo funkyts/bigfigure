@@ -407,14 +407,14 @@ function drawBattle(){
   q.choices.forEach((choice,i)=>{
     const col=i%cols,row=Math.floor(i/cols);const bx=sx+col*(cw+gap);const by=choiceY+row*(ch+gap);
     G._cr.push({x:bx,y:by,w:cw,h:ch,i});
-    // Monster abilities affect display
+    // Monster abilities affect display - only when still answering
     const isHidden=G.hiddenChoice===i&&G.answering;
-    const isDecoy=G.decoyBlink>0&&choice!==q.answer&&Math.sin(G.frame*.3+i*2)>.3;
+    const isDecoy=G.decoyBlink>0&&G.selectedIdx<0&&choice!==q.answer&&Math.sin(G.frame*.15+i*2)>.2;
     
     let bg='#1a1f2e',bd='#30363d',tc='#e6edf3';
     if(G.selectedIdx===i){if(choice===q.answer){bg='rgba(46,213,115,.25)';bd='#2ed573';tc='#2ed573';}else{bg='rgba(255,71,87,.25)';bd='#ff4757';tc='#ff4757';}}
     else if(G.selectedIdx>=0&&choice===q.answer){bg='rgba(46,213,115,.15)';bd='#2ed573';tc='#2ed573';}
-    if(isDecoy){bd='#ffd700';bg='rgba(255,215,0,.15)';} // Dragon decoy
+    else if(isDecoy){bd='#ffd700';bg='rgba(255,215,0,.12)';} // Dragon decoy - only when no answer selected
     
     c.fillStyle=bg;c.strokeStyle=bd;c.lineWidth=2;const r=8;
     c.beginPath();c.moveTo(bx+r,by);c.lineTo(bx+cw-r,by);c.quadraticCurveTo(bx+cw,by,bx+cw,by+r);c.lineTo(bx+cw,by+ch-r);c.quadraticCurveTo(bx+cw,by+ch,bx+cw-r,by+ch);c.lineTo(bx+r,by+ch);c.quadraticCurveTo(bx,by+ch,bx,by+ch-r);c.lineTo(bx,by+r);c.quadraticCurveTo(bx,by,bx+r,by);c.closePath();c.fill();c.stroke();
@@ -563,7 +563,7 @@ function applyMonsterAbility(){
     if(wrongs.length>0)G.hiddenChoice=wrongs[Math.floor(Math.random()*wrongs.length)].i;
   }
   if(ab==='timer'||ab==='combo'){
-    const base=1800; // 30 sec at 60fps
+    const base=2700; // 45 sec at 60fps
     G.timerMax=Math.floor(base*rd.timerMult);G.timer=G.timerMax;
   }
   if(ab==='decoy'){G.decoyBlink=9999;}
@@ -620,46 +620,48 @@ function endStage(){
   let newLv=0;for(let i=0;i<5;i++)if(G.stars[i]>0)newLv=i+1;newLv=Math.min(newLv,4);G.charLevel=newLv;
   if(won)sfxWin();else sfxLose();
   
-  // Check if all 5 stages cleared in this round
   const allCleared=G.stars.every(s=>s>0);
-  if(won&&allCleared&&G.round<4){
-    // Show round-up screen after level up
-    if(newLv>prevLv)showLvUp(newLv,stars,acc,tot,true);
-    else showRoundUp(stars,acc,tot);
-  }else if(won&&newLv>prevLv){
-    showLvUp(newLv,stars,acc,tot,false);
-  }else{
-    showRes(won,stars,acc,tot);
-  }
+  const canRoundUp=won&&allCleared&&G.round<4;
+  
+  // Queue: level up → round up → result (each step triggers next)
+  G._endQueue=[];
+  if(won&&newLv>prevLv)G._endQueue.push({type:'lvup',lv:newLv});
+  if(canRoundUp)G._endQueue.push({type:'roundup'});
+  G._endData={stars,acc,tot};
+  
+  processEndQueue();
 }
 
-// ====== ROUND UP SCREEN ======
-function showRoundUp(stars,acc,tot){
-  const nextRound=G.round+1;
-  const rd=ROUNDS[nextRound];
-  sfxLvUp();
-  document.getElementById('luRank').textContent=`${rd.badge} ${rd.name} 모드 해금!`;
-  document.getElementById('luDesc').textContent=rd.desc;
-  document.getElementById('lvlUp').style.display='flex';document.getElementById('lvlUp').classList.add('on');
-  // Reuse level up canvas for a special animation
-  const luCv=document.getElementById('luCanvas');const lc=luCv.getContext('2d');luCv.width=200;luCv.height=250;
-  let f=0;if(G._luAf)cancelAnimationFrame(G._luAf);
-  (function tick(){
-    G._luAf=requestAnimationFrame(tick);f++;lc.clearRect(0,0,200,250);
-    // Draw round badge big
-    lc.font=`${60+Math.sin(f*.08)*5}px serif`;lc.textAlign='center';lc.textBaseline='middle';
-    lc.fillText(rd.badge,100,100);
-    // Sparkles
-    for(let i=0;i<12;i++){const a=f*.04+i*Math.PI/6;lc.globalAlpha=.3+Math.sin(f*.06+i)*.3;lc.fillStyle=rd.color;lc.beginPath();lc.arc(100+Math.cos(a)*70,100+Math.sin(a)*50,3,0,Math.PI*2);lc.fill();}
-    lc.globalAlpha=1;
-    lc.font="bold 18px 'Black Han Sans',sans-serif";lc.fillStyle=rd.color;
-    lc.fillText(`ROUND ${nextRound+1}`,100,170);
-    lc.font="14px 'Jua',sans-serif";lc.fillStyle='#8b949e';
-    lc.fillText(`몬스터 HP: ${rd.monHP}`,100,195);
-    lc.fillText(`오답 데미지: -${rd.dmg}`,100,215);
-    if(rd.timerMult<1)lc.fillText(`타이머: ${Math.round(rd.timerMult*100)}%`,100,235);
-  })();
-  G._luData={stars,acc,tot,roundUp:true};
+function processEndQueue(){
+  const d=G._endData;
+  if(!G._endQueue||G._endQueue.length===0){
+    showRes(G.towerHP>0,d.stars,d.acc,d.tot);
+    return;
+  }
+  const next=G._endQueue.shift();
+  if(next.type==='lvup'){
+    sfxLvUp();
+    document.getElementById('luRank').textContent=LVLS[next.lv].name;
+    document.getElementById('luDesc').textContent=LVLS[next.lv].desc;
+    document.getElementById('lvlUp').style.display='flex';document.getElementById('lvlUp').classList.add('on');
+    drawLuChar(next.lv);
+  }else if(next.type==='roundup'){
+    G.round=Math.min(G.round+1,4);
+    G.stars=G.roundStars[G.round];
+    const rd=ROUNDS[G.round];
+    sfxLvUp();
+    document.getElementById('luRank').textContent=`${rd.badge} ${rd.name} 모드 해금!`;
+    document.getElementById('luDesc').textContent=rd.desc;
+    document.getElementById('lvlUp').style.display='flex';document.getElementById('lvlUp').classList.add('on');
+    const luCv=document.getElementById('luCanvas');const lc=luCv.getContext('2d');luCv.width=200;luCv.height=250;
+    let f=0;if(G._luAf)cancelAnimationFrame(G._luAf);
+    (function tick(){G._luAf=requestAnimationFrame(tick);f++;lc.clearRect(0,0,200,250);
+      lc.font=`${60+Math.sin(f*.08)*5}px serif`;lc.textAlign='center';lc.textBaseline='middle';lc.fillText(rd.badge,100,100);
+      for(let i=0;i<12;i++){const a=f*.04+i*Math.PI/6;lc.globalAlpha=.3+Math.sin(f*.06+i)*.3;lc.fillStyle=rd.color;lc.beginPath();lc.arc(100+Math.cos(a)*70,100+Math.sin(a)*50,3,0,Math.PI*2);lc.fill();}lc.globalAlpha=1;
+      lc.font="bold 18px 'Black Han Sans',sans-serif";lc.fillStyle=rd.color;lc.fillText(`ROUND ${G.round+1}`,100,170);
+      lc.font="14px 'Jua',sans-serif";lc.fillStyle='#8b949e';lc.fillText(`몬스터 HP: ${rd.monHP}`,100,200);lc.fillText(`오답 데미지: -${rd.dmg}`,100,220);
+    })();
+  }
 }
 
 function showRes(won,stars,acc,tot){
@@ -669,21 +671,11 @@ function showRes(won,stars,acc,tot){
   document.getElementById('rNext').style.display=(G.stage<4&&won)?'':'none';showScr('result');
 }
 
-function showLvUp(lv,stars,acc,tot,roundUp=false){sfxLvUp();document.getElementById('luRank').textContent=LVLS[lv].name;document.getElementById('luDesc').textContent=LVLS[lv].desc;document.getElementById('lvlUp').style.display='flex';document.getElementById('lvlUp').classList.add('on');drawLuChar(lv);G._luData={stars,acc,tot,roundUp};}
 function drawLuChar(li){const luCv=document.getElementById('luCanvas');const lc=luCv.getContext('2d');const lv=LVLS[li];luCv.width=200;luCv.height=250;let f=0;if(G._luAf)cancelAnimationFrame(G._luAf);(function tick(){G._luAf=requestAnimationFrame(tick);f++;lc.clearRect(0,0,200,250);const x=100,y=140,s=55;if(lv.aura){lc.beginPath();lc.arc(x,y-s*.1,s*1.1,0,Math.PI*2);lc.fillStyle='rgba(255,215,0,.08)';lc.fill();}for(let i=0;i<8;i++){const a=f*.03+i*Math.PI/4;lc.globalAlpha=.3+Math.sin(f*.08+i)*.3;lc.fillStyle='#ffd700';lc.beginPath();lc.arc(x+Math.cos(a)*s*.9,y-s*.1+Math.sin(a)*s*.5,2,0,Math.PI*2);lc.fill();}lc.globalAlpha=1;lc.save();lc.translate(x,y+Math.sin(f*.08)*3);lc.shadowColor=lv.glow;lc.shadowBlur=lv.glowS;if(lv.wings){const wf=Math.sin(f*.1)*12;lc.fillStyle=lv.wingC;lc.save();lc.translate(-s*.12,-s*.3);lc.rotate((-25+wf)*Math.PI/180);lc.beginPath();lc.moveTo(0,0);lc.lineTo(-s*.55,-s*.35);lc.lineTo(-s*.65,0);lc.lineTo(-s*.35,s*.12);lc.closePath();lc.fill();lc.restore();lc.save();lc.translate(s*.12,-s*.3);lc.rotate((25-wf)*Math.PI/180);lc.beginPath();lc.moveTo(0,0);lc.lineTo(s*.55,-s*.35);lc.lineTo(s*.65,0);lc.lineTo(s*.35,s*.12);lc.closePath();lc.fill();lc.restore();}if(lv.cape){lc.fillStyle=lv.capeC;lc.beginPath();lc.moveTo(-s*.18,-s*.35);lc.lineTo(-s*.25,s*.18);lc.lineTo(s*.25,s*.18);lc.lineTo(s*.18,-s*.35);lc.closePath();lc.fill();}lc.fillStyle=lv.leg;lc.fillRect(-s*.12,0,s*.18,s*.26);lc.fillRect(s*.02,0,s*.18,s*.26);lc.fillStyle=lv.body;lc.fillRect(-s*.24,-s*.44,s*.48,s*.48);lc.fillStyle=lv.dark;lc.fillRect(-s*.2,-s*.4,s*.4,s*.06);if(lv.shield){lc.fillStyle=lv.shldC;lc.save();lc.translate(-s*.3,-s*.22);lc.fillRect(-s*.1,-s*.14,s*.2,s*.28);lc.restore();}lc.fillStyle=lv.head;lc.fillRect(-s*.22,-s*.78,s*.44,s*.36);if(lv.helmet){lc.fillStyle=lv.helmC;lc.fillRect(-s*.24,-s*.82,s*.48,s*.18);if(lv.helmGem){lc.fillStyle=lv.helmGem;lc.beginPath();lc.arc(0,-s*.8,s*.05,0,Math.PI*2);lc.fill();}lc.fillStyle=lv.helmGem||'#fff';lc.globalAlpha=.5+Math.sin(f*.08)*.2;lc.fillRect(-s*.1,-s*.68,s*.06,s*.03);lc.fillRect(s*.05,-s*.68,s*.06,s*.03);lc.globalAlpha=1;}else{lc.fillStyle='#fff';lc.fillRect(-s*.14,-s*.64,s*.1,s*.09);lc.fillRect(s*.04,-s*.64,s*.1,s*.09);}lc.fillStyle=lv.dark;lc.save();lc.translate(s*.24,-s*.35);lc.fillRect(-s*.04,0,s*.12,s*.3);lc.fillStyle=lv.wepC;lc.fillRect(s*.08,s*.02,s*.3,s*.07);lc.fillStyle=lv.wepT;lc.fillRect(s*.34,s*.01,s*.08,s*.09);if(lv.wepFlame){lc.fillStyle=`rgba(255,100,0,${Math.random()*.2+.4})`;lc.beginPath();lc.arc(s*.42,s*.055,s*.08,0,Math.PI*2);lc.fill();}lc.restore();lc.shadowBlur=0;lc.restore();})();}
 function closeLevelUp(){
   document.getElementById('lvlUp').style.display='none';document.getElementById('lvlUp').classList.remove('on');
   if(G._luAf)cancelAnimationFrame(G._luAf);
-  const d=G._luData||{stars:1,acc:100,tot:G.correct+G.wrong,roundUp:false};
-  if(d.roundUp&&!d._roundDone){
-    // Advance to next round and show round-up
-    G.round=Math.min(G.round+1,4);
-    G.stars=G.roundStars[G.round];
-    d._roundDone=true;G._luData=d;
-    showRoundUp(d.stars,d.acc,d.tot);
-  }else{
-    showRes(true,d.stars,d.acc,d.tot);
-  }
+  processEndQueue(); // simply process next in queue (round-up or result)
 }
 function playNext(){if(G.stage<4)startStage(G.stage+1);else goStages();}
 
